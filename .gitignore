@@ -1,0 +1,4 @@
+vars/*
+!vars/.gitfolder
+files.txt
+.client
