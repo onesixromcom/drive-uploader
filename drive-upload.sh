@@ -27,13 +27,22 @@ ACCESS_TOKEN=""
 # 0 - is ok
 # 1 - no file
 # 2 - token needs to be refreshed
+# 3 - invalid token
 ACCESS_TOKEN_STATUS=0
+
+# 0 - is ok
+# 1 - no file
+# 2 - token invalid. All chain need to be regenrated
+REFRESH_TOKEN_STATUS=0
 
 FOLDER_NAME="backup"
 FOLDER_ID=""
 
 FILE_ID=""
 SLUG=""
+
+# check if request goes in loop
+RETRIES=0
 
 function jsonValue() {
 	KEY=$1
@@ -143,7 +152,10 @@ function get_token_status() {
 			ACCESS_TOKEN_STATUS=2
 			return;
 		fi
-		
+		if [ "$status" = "invalid_grant" ]; then
+			ACCESS_TOKEN_STATUS=3
+			return;
+		fi
     fi
 }
 
@@ -162,6 +174,13 @@ function get_jwt_token() {
 		https://accounts.google.com/o/oauth2/token`
 
 	#echo "resp=$access_token_response"
+	status=`echo $access_token_response | jsonValue error`
+	echo "status=$status"
+	if [ ! -z "$status" ]; then
+		if [ "$status" = "invalid_grant" ]; then
+			client_code_message
+		fi
+    fi
 	
 	ACCESS_TOKEN=`echo $access_token_response | jsonValue access_token`
 	if [ ! -z "$ACCESS_TOKEN" ]; then
@@ -199,45 +218,61 @@ function refresh_access_token() {
 		rm $FILE_ACCESS_TOKEN
 		echo $ACCESS_TOKEN > $FILE_ACCESS_TOKEN
 	else
-		echo "Refresh error. exit"
-		exit;
+		if [ "$RETRIES" -lt 2 ]; then
+			echo "Token Refresh error. Trying all chain from beginning."
+			RETRIES=$(($RETRIES + 1))
+			if test -f "$FILE_REFRESH_TOKEN"; then rm $FILE_REFRESH_TOKEN ;fi
+			if test -f "$FILE_ACCESS_TOKEN"; then rm $FILE_ACCESS_TOKEN ;fi
+
+			token_chain_check
+		else
+			echo "Refresh error. exit"
+			exit;
+		fi
 	fi
+}
+
+function token_chain_check() {
+	if ! test -f "$FILE_ACCESS_TOKEN"; then
+	   echo "Error. Access token file $FILE_ACCESS_TOKEN not found."
+	   ACCESS_TOKEN_STATUS=1
+	fi
+
+	if [ "$ACCESS_TOKEN_STATUS" -eq 1 ]; then
+		get_jwt_token
+	fi
+
+	ACCESS_TOKEN=$(< "$FILE_ACCESS_TOKEN")
+
+	get_token_status
+
+	if [ "$ACCESS_TOKEN_STATUS" -eq 2 ]; then
+		refresh_access_token
+	fi
+
+	ACCESS_TOKEN=$(< "$FILE_ACCESS_TOKEN")
+
+	if [ -z "$ACCESS_TOKEN" ]; then
+	   echo "Error. Access token is empty."
+	   exit;
+	fi
+}
+
+function client_code_message() {
+	echo "Visit url and save CLIENT_CODE to .code file."
+	scope="https://www.googleapis.com/auth/drive"
+	echo "https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=urn:ietf:wg:oauth:2.0:oob&scope=$scope&response_type=code"
+	exit
 }
 
 # ======================================================================
 # ======================================================================
 # ======================================================================
-
 if [ -z "$CLIENT_CODE" ]; then
-	echo "Visit url and save CLIENT_CODE to .code file."
-	scope="https://www.googleapis.com/auth/drive"
-	echo "https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=urn:ietf:wg:oauth:2.0:oob&scope=$scope&response_type=code"
-	exit
+	client_code_message
 fi
 
-if ! test -f "$FILE_ACCESS_TOKEN"; then
-   echo "Error. Access token file $FILE_ACCESS_TOKEN not found."
-   ACCESS_TOKEN_STATUS=1
-fi
-
-if [ "$ACCESS_TOKEN_STATUS" -eq 1 ]; then
-	get_jwt_token
-fi
-
-ACCESS_TOKEN=$(< "$FILE_ACCESS_TOKEN")
-
-get_token_status
-
-if [ "$ACCESS_TOKEN_STATUS" -eq 2 ]; then
-	refresh_access_token
-fi
-
-ACCESS_TOKEN=$(< "$FILE_ACCESS_TOKEN")
-
-if [ -z "$ACCESS_TOKEN" ]; then
-   echo "Error. Access token is empty."
-   exit;
-fi
+token_chain_check
 
 if ! test -f "$FILE_FOLDER_ID"; then
 	search_folder_id
