@@ -184,7 +184,7 @@ function get_jwt_token() {
 	
 	ACCESS_TOKEN=`echo $access_token_response | jsonValue access_token`
 	if [ ! -z "$ACCESS_TOKEN" ]; then
-		rm $FILE_ACCESS_TOKEN
+		if test -f "$FILE_ACCESS_TOKEN"; then rm $FILE_ACCESS_TOKEN ;fi
 		echo $ACCESS_TOKEN > $FILE_ACCESS_TOKEN
 	else
 		echo "Access token not found."
@@ -192,7 +192,7 @@ function get_jwt_token() {
 	
 	REFRESH_TOKEN=`echo $access_token_response | jsonValue refresh_token`
 	if [ ! -z "$REFRESH_TOKEN" ]; then
-		rm $FILE_REFRESH_TOKEN
+		if test -f "$FILE_REFRESH_TOKEN"; then rm $FILE_REFRESH_TOKEN ;fi
 		echo $REFRESH_TOKEN > $FILE_REFRESH_TOKEN
 	else
 		echo "Refresh token not found."
@@ -215,7 +215,7 @@ function refresh_access_token() {
 	#echo "refresh_response=$refresh_response"
 	ACCESS_TOKEN=`echo $refresh_response | jsonValue access_token`
 	if [ ! -z "$ACCESS_TOKEN" ]; then
-		rm $FILE_ACCESS_TOKEN
+		if test -f "$FILE_ACCESS_TOKEN"; then rm $FILE_ACCESS_TOKEN ;fi
 		echo $ACCESS_TOKEN > $FILE_ACCESS_TOKEN
 	else
 		if [ "$RETRIES" -lt 2 ]; then
